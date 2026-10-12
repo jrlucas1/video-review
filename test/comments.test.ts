@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createContext, createDelivery, get, post, submit } from './helpers.ts';
+import { VIDEO_DURATION_SECONDS, createContext, createDelivery, get, post, submit } from './helpers.ts';
 import type { TestContext } from './helpers.ts';
 
 let ctx: TestContext;
@@ -80,8 +80,8 @@ describe('segundo do comentário', () => {
     const videoId = await submit(ctx.app, deliveryId, 'video');
 
     const first = await comment(videoId, { second: 0 });
-    const last = await comment(videoId, { second: 30 });
-    const beyond = await comment(videoId, { second: 31 });
+    const last = await comment(videoId, { second: VIDEO_DURATION_SECONDS });
+    const beyond = await comment(videoId, { second: VIDEO_DURATION_SECONDS + 1 });
 
     expect(first.status).toBe(201);
     expect(last.status).toBe(201);

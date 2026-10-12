@@ -8,8 +8,7 @@ beforeEach(() => {
   ctx = createContext();
 });
 
-// Entrega de campanha que exige vídeo e capa, já aprovada em START.
-async function approvedDelivery(): Promise<number> {
+async function approvedVideoAndCoverDelivery(): Promise<number> {
   const deliveryId = await createDelivery(ctx.app, ['video', 'cover']);
   await submitAndApprove(ctx.app, deliveryId, 'video');
   await submitAndApprove(ctx.app, deliveryId, 'cover');
@@ -20,7 +19,7 @@ async function approvedDelivery(): Promise<number> {
 
 describe('entrega aprovada que recebe versão nova', () => {
   it('deixa de estar aprovada até a versão nova ser aprovada', async () => {
-    const deliveryId = await approvedDelivery();
+    const deliveryId = await approvedVideoAndCoverDelivery();
 
     ctx.now = new Date('2026-03-05T09:00:00.000Z');
     const newCover = await submit(ctx.app, deliveryId, 'cover');
@@ -38,7 +37,7 @@ describe('entrega aprovada que recebe versão nova', () => {
   });
 
   it('continua em produção se a versão nova recebe pedido de ajustes', async () => {
-    const deliveryId = await approvedDelivery();
+    const deliveryId = await approvedVideoAndCoverDelivery();
     const newVideo = await submit(ctx.app, deliveryId, 'video');
 
     await post(ctx.app, `/versions/${newVideo}/request-changes`);
@@ -49,7 +48,7 @@ describe('entrega aprovada que recebe versão nova', () => {
   });
 
   it('versão nova em peça não exigida não desfaz a aprovação', async () => {
-    const deliveryId = await approvedDelivery();
+    const deliveryId = await approvedVideoAndCoverDelivery();
 
     await submit(ctx.app, deliveryId, 'script');
 
@@ -57,7 +56,7 @@ describe('entrega aprovada que recebe versão nova', () => {
   });
 
   it('aprovar de novo é idempotente e mantém a data da primeira aprovação', async () => {
-    const deliveryId = await approvedDelivery();
+    const deliveryId = await approvedVideoAndCoverDelivery();
 
     ctx.now = new Date('2026-03-09T18:30:00.000Z');
     const { status, body } = await post(ctx.app, `/deliveries/${deliveryId}/approve`);

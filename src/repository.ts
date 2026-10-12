@@ -1,9 +1,6 @@
 import type { Piece, VersionStatus } from './approval.ts';
 import type { Db } from './db.ts';
 
-// Acesso ao banco. Aqui não tem regra: quem decide o que pode é o service.ts.
-// As buscas devolvem null quando a linha não existe.
-
 export interface CampaignRow {
   id: number;
   name: string;
@@ -85,16 +82,13 @@ export function findDelivery(db: Db, deliveryId: number): DeliveryRow | null {
   return (row as DeliveryRow | undefined) ?? null;
 }
 
-// Só grava a primeira aprovação. Repetir a chamada não muda a data.
-export function recordDeliveryApproval(db: Db, deliveryId: number, approvedAt: string): void {
+export function recordFirstDeliveryApproval(db: Db, deliveryId: number, approvedAt: string): void {
   db.prepare('UPDATE deliveries SET approved_at = ? WHERE id = ? AND approved_at IS NULL').run(
     approvedAt,
     deliveryId,
   );
 }
 
-// O número da versão é o seguinte ao maior da peça naquela entrega.
-// A leitura e a inserção ficam na mesma transação, e o UNIQUE recusa número repetido.
 export function insertVersion(
   db: Db,
   version: {
@@ -136,7 +130,6 @@ export function listVersions(db: Db, deliveryId: number, piece: Piece): Version[
     .all(deliveryId, piece) as Version[];
 }
 
-// Número da versão atual da peça na entrega, ou 0 quando ainda não há versão.
 export function currentVersionNumber(db: Db, deliveryId: number, piece: Piece): number {
   return db
     .prepare('SELECT COALESCE(MAX(number), 0) FROM versions WHERE delivery_id = ? AND piece = ?')
@@ -144,7 +137,6 @@ export function currentVersionNumber(db: Db, deliveryId: number, piece: Piece): 
     .get(deliveryId, piece) as number;
 }
 
-// A versão atual de cada peça da entrega: no máximo uma linha por peça.
 export function listCurrentVersions(db: Db, deliveryId: number): Version[] {
   return db
     .prepare(
@@ -185,7 +177,6 @@ export function insertComment(
     .get(comment.versionId, comment.author, comment.text, comment.second, comment.createdAt) as Comment;
 }
 
-// Na ordem do vídeo; no mesmo segundo, na ordem em que foram escritos.
 export function listComments(db: Db, versionId: number): Comment[] {
   return db
     .prepare(`SELECT ${COMMENT_COLUMNS} FROM comments WHERE version_id = ? ORDER BY second, id`)

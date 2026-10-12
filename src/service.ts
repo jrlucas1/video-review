@@ -10,9 +10,6 @@ import type { Db } from './db.ts';
 import * as repository from './repository.ts';
 import type { Comment, DeliveryRow, Version } from './repository.ts';
 
-// Casos de uso da API. As regras ficam aqui e em approval.ts; o SQL fica em repository.ts.
-
-// Erro esperado da API. O app.ts transforma em resposta com status, error e message.
 export class ReviewError extends Error {
   readonly status: number;
   readonly code: string;
@@ -77,7 +74,6 @@ function isCurrent(db: Db, version: Version): boolean {
   return repository.currentVersionNumber(db, version.deliveryId, version.piece) === version.number;
 }
 
-// Versão substituída fica congelada: não recebe decisão nem comentário novo.
 function assertCurrent(db: Db, version: Version): void {
   if (!isCurrent(db, version)) {
     throw new ReviewError(
@@ -144,11 +140,10 @@ export function approveDelivery(db: Db, deliveryId: number, now: Date): Delivery
       { pending },
     );
   }
-  repository.recordDeliveryApproval(db, deliveryId, now.toISOString());
+  repository.recordFirstDeliveryApproval(db, deliveryId, now.toISOString());
   return getDelivery(db, deliveryId);
 }
 
-// A versão nova nasce pending e passa a ser a atual, em qualquer status da anterior.
 export function submitVersion(
   db: Db,
   deliveryId: number,
@@ -177,7 +172,6 @@ export function listVersions(db: Db, deliveryId: number, piece: Piece): Version[
   return repository.listVersions(db, deliveryId, piece);
 }
 
-// Os comentários são os desta versão, e só os dela.
 export function getVersion(db: Db, versionId: number): VersionView {
   const version = requireVersion(db, versionId);
   return {
@@ -187,7 +181,6 @@ export function getVersion(db: Db, versionId: number): VersionView {
   };
 }
 
-// pending -> approved ou pending -> changes_requested. As duas decisões são finais.
 export function decideVersion(
   db: Db,
   versionId: number,

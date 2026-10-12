@@ -5,8 +5,8 @@ import { openDatabase } from '../src/db.ts';
 import type { Db } from '../src/db.ts';
 
 export const START = '2026-03-01T12:00:00.000Z';
+export const VIDEO_DURATION_SECONDS = 30;
 
-// `now` é o relógio da API. O teste troca o valor para avançar o tempo.
 export interface TestContext {
   app: FastifyInstance;
   db: Db;
@@ -29,18 +29,16 @@ export async function get(app: FastifyInstance, url: string) {
   return { status: response.statusCode, body: response.json() };
 }
 
-// Cria campanha e entrega; devolve o id da entrega.
 export async function createDelivery(app: FastifyInstance, requiredPieces: Piece[]): Promise<number> {
   const campaign = await post(app, '/campaigns', { name: 'Lançamento', requiredPieces });
   const delivery = await post(app, `/campaigns/${campaign.body.id}/deliveries`, { creator: 'ana' });
   return delivery.body.id;
 }
 
-// Envia uma versão da peça; devolve o id da versão. O vídeo tem 30 segundos.
 export async function submit(app: FastifyInstance, deliveryId: number, piece: Piece): Promise<number> {
   const payload =
     piece === 'video'
-      ? { url: 'https://cdn.test/video.mp4', durationSeconds: 30 }
+      ? { url: 'https://cdn.test/video.mp4', durationSeconds: VIDEO_DURATION_SECONDS }
       : { url: `https://cdn.test/${piece}` };
   const version = await post(app, `/deliveries/${deliveryId}/pieces/${piece}/versions`, payload);
   if (version.status !== 201) {
