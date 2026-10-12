@@ -1,5 +1,5 @@
 import Fastify from 'fastify';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyError, FastifyInstance } from 'fastify';
 import type { Db } from './db.ts';
 import {
   STRICT_VALIDATION,
@@ -32,19 +32,41 @@ import {
   submitVersion,
 } from './service.ts';
 
-export function buildApp(db: Db, clock: () => Date = () => new Date()): FastifyInstance {
-  const app = Fastify({ ajv: { customOptions: STRICT_VALIDATION } });
+export interface AppOptions {
+  clock?: () => Date;
+  logger?: boolean;
+}
 
-  app.setErrorHandler((error: Error & { validation?: unknown }, _request, reply) => {
+const CLIENT_ERROR_MESSAGES: Record<string, string> = {
+  FST_ERR_CTP_INVALID_JSON_BODY: 'O corpo não é um JSON válido.',
+  FST_ERR_CTP_EMPTY_JSON_BODY: 'O corpo está vazio, mas o content-type é JSON.',
+};
+
+export function buildApp(db: Db, options: AppOptions = {}): FastifyInstance {
+  const clock = options.clock ?? (() => new Date());
+  const app = Fastify({
+    logger: options.logger ?? false,
+    ajv: { customOptions: STRICT_VALIDATION },
+  });
+
+  app.setNotFoundHandler((_request, reply) =>
+    reply.code(404).send({ error: 'not_found', message: 'Rota não existe.' }),
+  );
+
+  app.setErrorHandler((error: FastifyError | ReviewError, request, reply) => {
     if (error instanceof ReviewError) {
       return reply
         .code(error.status)
         .send({ error: error.code, message: error.message, ...error.details });
     }
-    if (error.validation) {
-      return reply.code(400).send({ error: 'invalid_payload', message: error.message });
+    if (error.statusCode !== undefined && error.statusCode < 500) {
+      return reply.code(error.statusCode).send({
+        error: 'invalid_payload',
+        message: CLIENT_ERROR_MESSAGES[error.code] ?? error.message,
+      });
     }
-    return reply.send(error);
+    request.log.error(error);
+    return reply.code(500).send({ error: 'internal_error', message: 'Erro interno.' });
   });
 
   app.post<{ Body: CampaignBody }>(

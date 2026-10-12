@@ -84,13 +84,17 @@ function assertCurrent(db: Db, version: Version): void {
   }
 }
 
+function requiredPiecesOf(db: Db, campaignId: number): Piece[] {
+  const required = repository.listRequiredPieces(db, campaignId);
+  return PIECES.filter((piece) => required.includes(piece));
+}
+
 export function getCampaign(db: Db, campaignId: number): Campaign {
   const campaign = repository.findCampaign(db, campaignId);
   if (!campaign) {
     throw notFound('Campanha');
   }
-  const required = repository.listRequiredPieces(db, campaignId);
-  return { ...campaign, requiredPieces: PIECES.filter((piece) => required.includes(piece)) };
+  return { ...campaign, requiredPieces: requiredPiecesOf(db, campaignId) };
 }
 
 export function createCampaign(db: Db, input: { name: string; requiredPieces: Piece[] }): Campaign {
@@ -99,14 +103,13 @@ export function createCampaign(db: Db, input: { name: string; requiredPieces: Pi
 
 export function getDelivery(db: Db, deliveryId: number): DeliveryView {
   const delivery = requireDelivery(db, deliveryId);
-  const requiredPieces = repository.listRequiredPieces(db, delivery.campaignId);
+  const required = requiredPiecesOf(db, delivery.campaignId);
   const currentVersions = repository.listCurrentVersions(db, deliveryId);
 
   const currentStatus: CurrentStatusByPiece = {};
   for (const version of currentVersions) {
     currentStatus[version.piece] = version.status;
   }
-  const required = PIECES.filter((piece) => requiredPieces.includes(piece));
   const pending = pendingPieces(required, currentStatus);
 
   return {
