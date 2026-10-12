@@ -4,8 +4,9 @@ export type Db = Database.Database;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS campaigns (
-  id   INTEGER PRIMARY KEY,
-  name TEXT NOT NULL
+  id    INTEGER PRIMARY KEY,
+  name  TEXT NOT NULL,
+  brand TEXT
 );
 
 CREATE TABLE IF NOT EXISTS campaign_required_pieces (

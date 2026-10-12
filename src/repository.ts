@@ -4,6 +4,7 @@ import type { Db } from './db.ts';
 export interface CampaignRow {
   id: number;
   name: string;
+  brand: string | null;
 }
 
 export interface DeliveryRow {
@@ -51,10 +52,15 @@ const VERSION_COLUMNS =
 
 const COMMENT_COLUMNS = 'id, version_id AS versionId, author, text, second, created_at AS createdAt';
 
-export function insertCampaign(db: Db, name: string, requiredPieces: readonly Piece[]): number {
+export function insertCampaign(
+  db: Db,
+  name: string,
+  brand: string,
+  requiredPieces: readonly Piece[],
+): number {
   const run = db.transaction((): number => {
     const campaignId = Number(
-      db.prepare('INSERT INTO campaigns (name) VALUES (?)').run(name).lastInsertRowid,
+      db.prepare('INSERT INTO campaigns (name, brand) VALUES (?, ?)').run(name, brand).lastInsertRowid,
     );
     const insertPiece = db.prepare(
       'INSERT INTO campaign_required_pieces (campaign_id, piece) VALUES (?, ?)',
@@ -68,7 +74,7 @@ export function insertCampaign(db: Db, name: string, requiredPieces: readonly Pi
 }
 
 export function findCampaign(db: Db, campaignId: number): CampaignRow | null {
-  const row = db.prepare('SELECT id, name FROM campaigns WHERE id = ?').get(campaignId);
+  const row = db.prepare('SELECT id, name, brand FROM campaigns WHERE id = ?').get(campaignId);
   return (row as CampaignRow | undefined) ?? null;
 }
 

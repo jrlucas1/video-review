@@ -1,5 +1,7 @@
 import Fastify from 'fastify';
-import type { FastifyError, FastifyInstance } from 'fastify';
+import type { FastifyError, FastifyInstance, FastifyRequest } from 'fastify';
+import { readActor } from './access.ts';
+import type { Actor } from './access.ts';
 import type { Db } from './db.ts';
 import {
   STRICT_VALIDATION,
@@ -43,6 +45,18 @@ const CLIENT_ERROR_MESSAGES: Record<string, string> = {
   FST_ERR_CTP_EMPTY_JSON_BODY: 'O corpo está vazio, mas o content-type é JSON.',
 };
 
+function actorOf(request: FastifyRequest): Actor {
+  const actor = readActor(request.headers);
+  if (!actor) {
+    throw new ReviewError(
+      401,
+      'unauthenticated',
+      'Informe X-Role (brand ou creator) e X-User.',
+    );
+  }
+  return actor;
+}
+
 export function buildApp(db: Db, options: AppOptions = {}): FastifyInstance {
   const clock = options.clock ?? (() => new Date());
   const app = Fastify({
@@ -73,34 +87,36 @@ export function buildApp(db: Db, options: AppOptions = {}): FastifyInstance {
   app.post<{ Body: CampaignBody }>(
     '/campaigns',
     { schema: { body: campaignBody } },
-    (request, reply) => reply.code(201).send(createCampaign(db, request.body)),
+    (request, reply) => reply.code(201).send(createCampaign(db, actorOf(request), request.body)),
   );
 
   app.get<{ Params: IdParams }>('/campaigns/:id', { schema: { params: idParams } }, (request) =>
-    getCampaign(db, Number(request.params.id)),
+    getCampaign(db, actorOf(request), Number(request.params.id)),
   );
 
   app.post<{ Params: IdParams; Body: DeliveryBody }>(
     '/campaigns/:id/deliveries',
     { schema: { params: idParams, body: deliveryBody } },
     (request, reply) =>
-      reply.code(201).send(createDelivery(db, Number(request.params.id), request.body)),
+      reply
+        .code(201)
+        .send(createDelivery(db, actorOf(request), Number(request.params.id), request.body)),
   );
 
   app.get<{ Params: IdParams }>('/deliveries/:id', { schema: { params: idParams } }, (request) =>
-    getDelivery(db, Number(request.params.id)),
+    getDelivery(db, actorOf(request), Number(request.params.id)),
   );
 
   app.get<{ Params: IdParams }>(
     '/deliveries/:id/events',
     { schema: { params: idParams } },
-    (request) => listDeliveryEvents(db, Number(request.params.id)),
+    (request) => listDeliveryEvents(db, actorOf(request), Number(request.params.id)),
   );
 
   app.post<{ Params: IdParams }>(
     '/deliveries/:id/approve',
     { schema: { params: idParams } },
-    (request) => approveDelivery(db, Number(request.params.id), clock()),
+    (request) => approveDelivery(db, actorOf(request), Number(request.params.id), clock()),
   );
 
   app.post<{ Params: IdAndPieceParams; Body: VersionBody }>(
@@ -108,7 +124,14 @@ export function buildApp(db: Db, options: AppOptions = {}): FastifyInstance {
     { schema: { params: idAndPieceParams, body: versionBody } },
     (request, reply) => {
       const { id: deliveryId, piece } = request.params;
-      const { version, created } = submitVersion(db, Number(deliveryId), piece, request.body, clock());
+      const { version, created } = submitVersion(
+        db,
+        actorOf(request),
+        Number(deliveryId),
+        piece,
+        request.body,
+        clock(),
+      );
       return reply.code(created ? 201 : 200).send(version);
     },
   );
@@ -116,30 +139,33 @@ export function buildApp(db: Db, options: AppOptions = {}): FastifyInstance {
   app.get<{ Params: IdAndPieceParams }>(
     '/deliveries/:id/pieces/:piece/versions',
     { schema: { params: idAndPieceParams } },
-    (request) => listVersions(db, Number(request.params.id), request.params.piece),
+    (request) => listVersions(db, actorOf(request), Number(request.params.id), request.params.piece),
   );
 
   app.get<{ Params: IdParams }>('/versions/:id', { schema: { params: idParams } }, (request) =>
-    getVersion(db, Number(request.params.id)),
+    getVersion(db, actorOf(request), Number(request.params.id)),
   );
 
   app.post<{ Params: IdParams }>(
     '/versions/:id/approve',
     { schema: { params: idParams } },
-    (request) => decideVersion(db, Number(request.params.id), 'approved', clock()),
+    (request) => decideVersion(db, actorOf(request), Number(request.params.id), 'approved', clock()),
   );
 
   app.post<{ Params: IdParams }>(
     '/versions/:id/request-changes',
     { schema: { params: idParams } },
-    (request) => decideVersion(db, Number(request.params.id), 'changes_requested', clock()),
+    (request) =>
+      decideVersion(db, actorOf(request), Number(request.params.id), 'changes_requested', clock()),
   );
 
   app.post<{ Params: IdParams; Body: CommentBody }>(
     '/versions/:id/comments',
     { schema: { params: idParams, body: commentBody } },
     (request, reply) =>
-      reply.code(201).send(addComment(db, Number(request.params.id), request.body, clock())),
+      reply
+        .code(201)
+        .send(addComment(db, actorOf(request), Number(request.params.id), request.body, clock())),
   );
 
   return app;

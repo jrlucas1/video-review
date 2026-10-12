@@ -19,13 +19,35 @@ export function createContext(): TestContext {
   return ctx;
 }
 
-export async function post(app: FastifyInstance, url: string, payload?: Record<string, unknown>) {
-  const response = await app.inject({ method: 'POST', url, payload });
+export interface Actor {
+  role: 'brand' | 'creator';
+  user: string;
+}
+
+export const BRAND: Actor = { role: 'brand', user: 'marca' };
+export const CREATOR: Actor = { role: 'creator', user: 'ana' };
+
+function identity(actor: Actor): Record<string, string> {
+  return { 'x-role': actor.role, 'x-user': actor.user };
+}
+
+function defaultActor(method: 'GET' | 'POST', url: string): Actor {
+  const submitsVersion = method === 'POST' && /\/pieces\/[^/]+\/versions$/.test(url);
+  return submitsVersion ? CREATOR : BRAND;
+}
+
+export async function post(
+  app: FastifyInstance,
+  url: string,
+  payload?: Record<string, unknown>,
+  actor: Actor = defaultActor('POST', url),
+) {
+  const response = await app.inject({ method: 'POST', url, payload, headers: identity(actor) });
   return { status: response.statusCode, body: response.json() };
 }
 
-export async function get(app: FastifyInstance, url: string) {
-  const response = await app.inject({ method: 'GET', url });
+export async function get(app: FastifyInstance, url: string, actor: Actor = defaultActor('GET', url)) {
+  const response = await app.inject({ method: 'GET', url, headers: identity(actor) });
   return { status: response.statusCode, body: response.json() };
 }
 
