@@ -8,7 +8,7 @@ import type {
 } from './approval.ts';
 import type { Db } from './db.ts';
 import * as repository from './repository.ts';
-import type { Comment, DeliveryRow, Version } from './repository.ts';
+import type { Comment, DeliveryEvent, DeliveryRow, EventVersion, Version } from './repository.ts';
 
 export class ReviewError extends Error {
   readonly status: number;
@@ -127,24 +127,56 @@ export function getDelivery(db: Db, deliveryId: number): DeliveryView {
   };
 }
 
+function toEventVersion(version: Version): EventVersion {
+  return { piece: version.piece, versionId: version.id, number: version.number };
+}
+
+function recordStatusChange(db: Db, before: DeliveryView, now: Date, undoneBy?: Version): DeliveryView {
+  const after = getDelivery(db, before.id);
+  if (after.status === before.status) {
+    return after;
+  }
+  const event = { deliveryId: after.id, createdAt: now.toISOString() };
+  if (after.status === 'in_production') {
+    const versions = undoneBy ? [toEventVersion(undoneBy)] : [];
+    repository.insertDeliveryEvent(db, { ...event, type: 'approval_undone', versions });
+    return after;
+  }
+  const versions = after.pieces
+    .filter((entry) => entry.required && entry.currentVersion !== null)
+    .map((entry) => toEventVersion(entry.currentVersion as Version));
+  const type = before.approvedAt === null ? 'approved' : 'approval_restored';
+  repository.insertDeliveryEvent(db, { ...event, type, versions });
+  return after;
+}
+
+export function listDeliveryEvents(db: Db, deliveryId: number): DeliveryEvent[] {
+  requireDelivery(db, deliveryId);
+  return repository.listDeliveryEvents(db, deliveryId);
+}
+
 export function createDelivery(db: Db, campaignId: number, input: { creator: string }): DeliveryView {
   getCampaign(db, campaignId);
   return getDelivery(db, repository.insertDelivery(db, campaignId, input.creator));
 }
 
 export function approveDelivery(db: Db, deliveryId: number, now: Date): DeliveryView {
-  const { pending } = getDelivery(db, deliveryId);
-  if (pending.length > 0) {
-    const missing = pending.map(({ piece, reason }) => `${piece} (${REASON_TEXT[reason]})`).join(', ');
-    throw new ReviewError(
-      409,
-      'pieces_pending',
-      `A entrega não pode ser aprovada. Peças exigidas pendentes: ${missing}.`,
-      { pending },
-    );
-  }
-  repository.recordFirstDeliveryApproval(db, deliveryId, now.toISOString());
-  return getDelivery(db, deliveryId);
+  const run = db.transaction((): DeliveryView => {
+    const before = getDelivery(db, deliveryId);
+    const { pending } = before;
+    if (pending.length > 0) {
+      const missing = pending.map(({ piece, reason }) => `${piece} (${REASON_TEXT[reason]})`).join(', ');
+      throw new ReviewError(
+        409,
+        'pieces_pending',
+        `A entrega não pode ser aprovada. Peças exigidas pendentes: ${missing}.`,
+        { pending },
+      );
+    }
+    repository.recordFirstDeliveryApproval(db, deliveryId, now.toISOString());
+    return recordStatusChange(db, before, now);
+  });
+  return run.immediate();
 }
 
 export function submitVersion(
@@ -167,6 +199,7 @@ export function submitVersion(
     if (current && current.url === input.url && current.durationSeconds === durationSeconds) {
       return { version: current, created: false };
     }
+    const before = getDelivery(db, deliveryId);
     const version = repository.insertVersion(db, {
       deliveryId,
       piece,
@@ -174,6 +207,7 @@ export function submitVersion(
       durationSeconds,
       createdAt: now.toISOString(),
     });
+    recordStatusChange(db, before, now, version);
     return { version, created: true };
   });
   return run.immediate();
@@ -197,18 +231,24 @@ export function decideVersion(
   db: Db,
   versionId: number,
   decision: 'approved' | 'changes_requested',
+  now: Date,
 ): VersionView {
-  const version = requireVersion(db, versionId);
-  assertCurrent(db, version);
-  if (version.status !== 'pending') {
-    throw new ReviewError(
-      409,
-      'version_already_decided',
-      `A versão ${version.number} de ${version.piece} já está como ${version.status}.`,
-    );
-  }
-  repository.updateVersionStatus(db, versionId, decision);
-  return getVersion(db, versionId);
+  const run = db.transaction((): VersionView => {
+    const version = requireVersion(db, versionId);
+    assertCurrent(db, version);
+    if (version.status !== 'pending') {
+      throw new ReviewError(
+        409,
+        'version_already_decided',
+        `A versão ${version.number} de ${version.piece} já está como ${version.status}.`,
+      );
+    }
+    const before = getDelivery(db, version.deliveryId);
+    repository.updateVersionStatus(db, versionId, decision);
+    recordStatusChange(db, before, now);
+    return getVersion(db, versionId);
+  });
+  return run.immediate();
 }
 
 export function addComment(

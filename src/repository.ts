@@ -1,4 +1,4 @@
-import type { Piece, VersionStatus } from './approval.ts';
+import type { DeliveryEventType, Piece, VersionStatus } from './approval.ts';
 import type { Db } from './db.ts';
 
 export interface CampaignRow {
@@ -30,6 +30,19 @@ export interface Comment {
   author: string;
   text: string;
   second: number | null;
+  createdAt: string;
+}
+
+export interface EventVersion {
+  piece: Piece;
+  versionId: number;
+  number: number;
+}
+
+export interface DeliveryEvent {
+  id: number;
+  type: DeliveryEventType;
+  versions: EventVersion[];
   createdAt: string;
 }
 
@@ -184,6 +197,24 @@ export function insertComment(
        RETURNING ${COMMENT_COLUMNS}`,
     )
     .get(comment.versionId, comment.author, comment.text, comment.second, comment.createdAt) as Comment;
+}
+
+export function insertDeliveryEvent(
+  db: Db,
+  event: { deliveryId: number; type: DeliveryEventType; versions: EventVersion[]; createdAt: string },
+): void {
+  db.prepare(
+    'INSERT INTO delivery_events (delivery_id, type, versions, created_at) VALUES (?, ?, ?, ?)',
+  ).run(event.deliveryId, event.type, JSON.stringify(event.versions), event.createdAt);
+}
+
+export function listDeliveryEvents(db: Db, deliveryId: number): DeliveryEvent[] {
+  const rows = db
+    .prepare(
+      'SELECT id, type, versions, created_at AS createdAt FROM delivery_events WHERE delivery_id = ? ORDER BY id',
+    )
+    .all(deliveryId) as (Omit<DeliveryEvent, 'versions'> & { versions: string })[];
+  return rows.map((row) => ({ ...row, versions: JSON.parse(row.versions) as EventVersion[] }));
 }
 
 export function listComments(db: Db, versionId: number): Comment[] {

@@ -28,6 +28,7 @@ import {
   getCampaign,
   getDelivery,
   getVersion,
+  listDeliveryEvents,
   listVersions,
   submitVersion,
 } from './service.ts';
@@ -90,6 +91,12 @@ export function buildApp(db: Db, options: AppOptions = {}): FastifyInstance {
     getDelivery(db, Number(request.params.id)),
   );
 
+  app.get<{ Params: IdParams }>(
+    '/deliveries/:id/events',
+    { schema: { params: idParams } },
+    (request) => listDeliveryEvents(db, Number(request.params.id)),
+  );
+
   app.post<{ Params: IdParams }>(
     '/deliveries/:id/approve',
     { schema: { params: idParams } },
@@ -119,13 +126,13 @@ export function buildApp(db: Db, options: AppOptions = {}): FastifyInstance {
   app.post<{ Params: IdParams }>(
     '/versions/:id/approve',
     { schema: { params: idParams } },
-    (request) => decideVersion(db, Number(request.params.id), 'approved'),
+    (request) => decideVersion(db, Number(request.params.id), 'approved', clock()),
   );
 
   app.post<{ Params: IdParams }>(
     '/versions/:id/request-changes',
     { schema: { params: idParams } },
-    (request) => decideVersion(db, Number(request.params.id), 'changes_requested'),
+    (request) => decideVersion(db, Number(request.params.id), 'changes_requested', clock()),
   );
 
   app.post<{ Params: IdParams; Body: CommentBody }>(

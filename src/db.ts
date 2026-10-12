@@ -44,6 +44,16 @@ CREATE TABLE IF NOT EXISTS comments (
 );
 
 CREATE INDEX IF NOT EXISTS comments_by_version_second ON comments (version_id, second);
+
+CREATE TABLE IF NOT EXISTS delivery_events (
+  id          INTEGER PRIMARY KEY,
+  delivery_id INTEGER NOT NULL REFERENCES deliveries (id),
+  type        TEXT NOT NULL CHECK (type IN ('approved', 'approval_undone', 'approval_restored')),
+  versions    TEXT NOT NULL,
+  created_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS delivery_events_by_delivery ON delivery_events (delivery_id, id);
 `;
 
 export function openDatabase(path = ':memory:'): Db {
