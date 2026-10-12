@@ -1,9 +1,10 @@
-import type { Piece, VersionStatus } from './approval.ts';
+import type { DeliveryEventType, Piece, VersionStatus } from './approval.ts';
 import type { Db } from './db.ts';
 
 export interface CampaignRow {
   id: number;
   name: string;
+  brand: string | null;
 }
 
 export interface DeliveryRow {
@@ -33,15 +34,33 @@ export interface Comment {
   createdAt: string;
 }
 
+export interface EventVersion {
+  piece: Piece;
+  versionId: number;
+  number: number;
+}
+
+export interface DeliveryEvent {
+  id: number;
+  type: DeliveryEventType;
+  versions: EventVersion[];
+  createdAt: string;
+}
+
 const VERSION_COLUMNS =
   'id, delivery_id AS deliveryId, piece, number, url, duration_seconds AS durationSeconds, status, created_at AS createdAt';
 
 const COMMENT_COLUMNS = 'id, version_id AS versionId, author, text, second, created_at AS createdAt';
 
-export function insertCampaign(db: Db, name: string, requiredPieces: readonly Piece[]): number {
+export function insertCampaign(
+  db: Db,
+  name: string,
+  brand: string,
+  requiredPieces: readonly Piece[],
+): number {
   const run = db.transaction((): number => {
     const campaignId = Number(
-      db.prepare('INSERT INTO campaigns (name) VALUES (?)').run(name).lastInsertRowid,
+      db.prepare('INSERT INTO campaigns (name, brand) VALUES (?, ?)').run(name, brand).lastInsertRowid,
     );
     const insertPiece = db.prepare(
       'INSERT INTO campaign_required_pieces (campaign_id, piece) VALUES (?, ?)',
@@ -55,7 +74,7 @@ export function insertCampaign(db: Db, name: string, requiredPieces: readonly Pi
 }
 
 export function findCampaign(db: Db, campaignId: number): CampaignRow | null {
-  const row = db.prepare('SELECT id, name FROM campaigns WHERE id = ?').get(campaignId);
+  const row = db.prepare('SELECT id, name, brand FROM campaigns WHERE id = ?').get(campaignId);
   return (row as CampaignRow | undefined) ?? null;
 }
 
@@ -130,6 +149,15 @@ export function listVersions(db: Db, deliveryId: number, piece: Piece): Version[
     .all(deliveryId, piece) as Version[];
 }
 
+export function findCurrentVersion(db: Db, deliveryId: number, piece: Piece): Version | null {
+  const row = db
+    .prepare(
+      `SELECT ${VERSION_COLUMNS} FROM versions WHERE delivery_id = ? AND piece = ? ORDER BY number DESC LIMIT 1`,
+    )
+    .get(deliveryId, piece);
+  return (row as Version | undefined) ?? null;
+}
+
 export function currentVersionNumber(db: Db, deliveryId: number, piece: Piece): number {
   return db
     .prepare('SELECT COALESCE(MAX(number), 0) FROM versions WHERE delivery_id = ? AND piece = ?')
@@ -175,6 +203,24 @@ export function insertComment(
        RETURNING ${COMMENT_COLUMNS}`,
     )
     .get(comment.versionId, comment.author, comment.text, comment.second, comment.createdAt) as Comment;
+}
+
+export function insertDeliveryEvent(
+  db: Db,
+  event: { deliveryId: number; type: DeliveryEventType; versions: EventVersion[]; createdAt: string },
+): void {
+  db.prepare(
+    'INSERT INTO delivery_events (delivery_id, type, versions, created_at) VALUES (?, ?, ?, ?)',
+  ).run(event.deliveryId, event.type, JSON.stringify(event.versions), event.createdAt);
+}
+
+export function listDeliveryEvents(db: Db, deliveryId: number): DeliveryEvent[] {
+  const rows = db
+    .prepare(
+      'SELECT id, type, versions, created_at AS createdAt FROM delivery_events WHERE delivery_id = ? ORDER BY id',
+    )
+    .all(deliveryId) as (Omit<DeliveryEvent, 'versions'> & { versions: string })[];
+  return rows.map((row) => ({ ...row, versions: JSON.parse(row.versions) as EventVersion[] }));
 }
 
 export function listComments(db: Db, versionId: number): Comment[] {

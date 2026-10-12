@@ -13,6 +13,9 @@ export interface PendingPiece {
 
 export type DeliveryStatus = 'in_production' | 'approved';
 
+export const DELIVERY_EVENT_TYPES = ['approved', 'approval_undone', 'approval_restored'] as const;
+export type DeliveryEventType = (typeof DELIVERY_EVENT_TYPES)[number];
+
 export type CurrentStatusByPiece = Partial<Record<Piece, VersionStatus>>;
 
 export function pendingPieces(
