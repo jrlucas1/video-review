@@ -90,7 +90,8 @@ O status da entrega é calculado, não gravado. O banco guarda só a data da apr
 - [src/service.ts](src/service.ts): os casos de uso e os erros.
 - [src/repository.ts](src/repository.ts): todo o SQL.
 - [src/db.ts](src/db.ts): schema e conexão.
-- [src/app.ts](src/app.ts): rotas e validação de formato.
+- [src/schemas.ts](src/schemas.ts): o formato de cada requisição.
+- [src/app.ts](src/app.ts): rotas.
 
 ## Índices
 
@@ -119,4 +120,4 @@ O Claude Code (Claude Opus 5.5) escreveu o código, os testes e este README.
 
 Eu tomei as decisões de desenho antes do código: status da entrega calculado a partir da aprovação registrada, comentário em qualquer peça com `second` só em vídeo, o estado `changes_requested` final como a aprovação, peça não exigida aceita e ignorada, lista de exigidas imutável, aprovação idempotente, comentário só na versão atual, duração declarada no vídeo, Fastify, SQLite sem ORM e Vitest.
 
-Revisei a primeira versão e pedi mudanças: nomes e estrutura iguais aos dos meus outros repositórios, o SQL separado do service num repository, a query da versão atual reescrita com CTE e as listas dos `CHECK` escritas no schema em vez de montadas por interpolação. Pedi o plano de execução de cada query e a medição de cada índice; dessa revisão saiu a troca do índice de comentários. Não revisei o resto do código linha a linha.
+Revisei a primeira versão e pedi mudanças: nomes e estrutura iguais aos dos meus outros repositórios, o SQL separado do service num repository, os schemas das requisições num arquivo próprio, a query da versão atual reescrita com CTE, as listas dos `CHECK` escritas no schema em vez de montadas por interpolação e o código sem comentários. Pedi o plano de execução de cada query e a medição de cada índice; dessa revisão saiu a troca do índice de comentários. Não revisei o resto do código linha a linha.
