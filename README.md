@@ -1,87 +1,122 @@
 # video-review
 
-API de revisão de entregas de campanha. Uma campanha declara quais peças exige (roteiro, vídeo, capa, legenda). Cada peça de uma entrega tem versões, e a entrega só é aprovada quando toda peça exigida tem a **versão atual** aprovada.
+API de revisão de entregas de campanha. A campanha declara quais peças exige (roteiro, vídeo, capa, legenda). Cada peça de uma entrega tem versões, e a entrega só é aprovada quando toda peça exigida tem a versão atual aprovada.
 
 ## Rodar
 
-Precisa de Node 20 ou mais novo.
+Use Node 20 ou mais novo.
 
 ```bash
 npm install
+npm run dev        # http://127.0.0.1:3000, banco em video-review.db
 npm test
 npm run typecheck
-npm start
 ```
 
-`npm start` sobe em `http://127.0.0.1:3000` e grava em `video-review.db`. As variáveis `PORT`, `HOST` e `BANCO` mudam isso.
+`PORT` e `DATABASE_PATH` mudam a porta e o arquivo do banco.
 
-## Por onde ler
+## Rotas
 
-1. [src/regra.ts](src/regra.ts): a regra inteira, em duas funções puras. Recebe a lista de peças exigidas como argumento.
-2. [test/regra.test.ts](test/regra.test.ts) e [test/api.test.ts](test/api.test.ts): os casos do enunciado, pelo nome.
-3. [src/servico.ts](src/servico.ts): as operações e o SQL.
-4. [src/banco.ts](src/banco.ts) e [src/app.ts](src/app.ts): schema e rotas.
-
-## Regras
-
-- **Peças exigidas são dado da campanha.** Ficam na tabela `campanha_peca_exigida`, uma linha por peça. São definidas na criação (ao menos uma, sem repetição) e não mudam depois.
-- **Versão.** Cada envio cria uma versão numerada da peça naquela entrega. A de maior número é a atual. Ela nasce `pendente` e vira `aprovada` ou `ajustes_pedidos`; as duas decisões são finais. Para corrigir, envia-se outra versão.
-- **Versão substituída fica congelada.** Não pode ser aprovada, receber pedido de ajustes nem comentário novo. Continua legível, com os comentários que recebeu.
-- **Aprovação da entrega.** Falha com `409 PECAS_PENDENTES` enquanto alguma peça exigida não tiver a versão atual aprovada. A resposta lista cada peça e o motivo (`sem_versao`, `pendente`, `ajustes_pedidos`).
-- **O status é calculado, não gravado.** O banco guarda só a data em que a marca aprovou. A entrega está `aprovada` quando essa data existe e não há pendência. Por isso uma versão nova numa peça exigida derruba o status para `em_producao` na hora, e ele volta quando essa versão é aprovada, sem ninguém aprovar a entrega de novo.
-- **Peça não exigida não bloqueia.** Pode receber versão, comentário e decisão, e não entra na conta.
-- **Comentário pertence a uma versão.** Em vídeo, `segundo` é obrigatório, inteiro, de 0 até a duração declarada. Nas outras peças o comentário não tem `segundo`. A versão nova nasce sem comentários.
-- **Aprovar a entrega de novo** devolve o estado atual e mantém a data da primeira aprovação.
-
-## API
-
-| Método e rota | O que faz |
+| Rota | O que faz |
 | --- | --- |
-| `POST /campanhas` | Cria campanha. Corpo: `nome`, `pecasExigidas`. |
-| `GET /campanhas/:id` | Campanha e peças exigidas. |
-| `POST /campanhas/:id/entregas` | Cria entrega. Corpo: `criador`. |
-| `GET /entregas/:id` | Status, pendências e a versão atual de cada peça. |
-| `POST /entregas/:id/aprovacao` | Aprova a entrega, ou `409` com as pendências. |
-| `POST /entregas/:id/pecas/:peca/versoes` | Envia versão. Corpo: `url`; em vídeo também `duracaoSegundos`. |
-| `GET /entregas/:id/pecas/:peca/versoes` | Histórico de versões da peça. |
-| `GET /versoes/:id` | Versão, se é a atual, e os comentários dela. |
-| `POST /versoes/:id/aprovacao` | Aprova a versão. |
-| `POST /versoes/:id/ajustes` | Pede ajustes na versão. |
-| `POST /versoes/:id/comentarios` | Comenta. Corpo: `autor`, `texto`; em vídeo também `segundo`. |
+| `POST /campaigns` | Cria a campanha com as peças exigidas |
+| `GET /campaigns/:id` | Mostra a campanha e as peças exigidas |
+| `POST /campaigns/:id/deliveries` | Cria uma entrega |
+| `GET /deliveries/:id` | Mostra o status, as pendências e a versão atual de cada peça |
+| `POST /deliveries/:id/approve` | Aprova a entrega, ou responde 409 com as pendências |
+| `POST /deliveries/:id/pieces/:piece/versions` | Envia uma versão da peça |
+| `GET /deliveries/:id/pieces/:piece/versions` | Lista o histórico de versões da peça |
+| `GET /versions/:id` | Mostra a versão, se é a atual, e os comentários dela |
+| `POST /versions/:id/approve` | Aprova a versão |
+| `POST /versions/:id/request-changes` | Pede ajustes na versão |
+| `POST /versions/:id/comments` | Comenta na versão |
 
-Erros têm sempre `erro` (código) e `mensagem`. `400` é entrada fora do formato, `404` recurso inexistente, `409` conflito com o estado atual, `422` campo que não combina com a peça.
+As peças são `script`, `video`, `cover` e `caption`.
 
-Exemplo de aprovação recusada:
+```json
+{ "name": "Lançamento", "requiredPieces": ["video", "cover"] }
+```
+
+```json
+{ "url": "https://cdn.exemplo/video-v2.mp4", "durationSeconds": 30 }
+```
+
+```json
+{ "author": "marca", "text": "Logo cortado aqui", "second": 12 }
+```
+
+Aprovar com peça pendente responde 409:
 
 ```json
 {
-  "erro": "PECAS_PENDENTES",
-  "mensagem": "A entrega não pode ser aprovada. Peças exigidas pendentes: video (versão atual aguardando aprovação), capa (sem versão enviada).",
-  "pendencias": [
-    { "peca": "video", "motivo": "pendente" },
-    { "peca": "capa", "motivo": "sem_versao" }
+  "error": "pieces_pending",
+  "message": "A entrega não pode ser aprovada. Peças exigidas pendentes: video (versão atual aguardando aprovação), cover (sem versão enviada).",
+  "pending": [
+    { "piece": "video", "reason": "pending" },
+    { "piece": "cover", "reason": "no_version" }
   ]
 }
 ```
 
-## Decisões
+Todo erro tem `error` e `message`. 400 é payload fora do formato, 404 é recurso que não existe, 409 é conflito com o estado atual e 422 é campo que não combina com a peça.
 
-- **Status derivado em vez de coluna.** Só existe um lugar que decide se a entrega está aprovada, e ele não fica dessincronizado das versões. O custo é calcular a cada leitura, com no máximo quatro peças.
-- **SQLite com SQL direto.** Roda só com `npm install` e ainda tem chave estrangeira, `UNIQUE (entrega, peça, número)` e transação na numeração da versão. Os testes usam banco em memória.
-- **Validação sem coerção.** `"12"` não vira `12` e campo desconhecido é `400`.
+## Regra de aprovação
 
-## Fora de escopo
+A regra está em [src/approval.ts](src/approval.ts). Os testes estão em [test/approval.test.ts](test/approval.test.ts) e, pela API, em [test/required-pieces.test.ts](test/required-pieces.test.ts) e [test/reopened-delivery.test.ts](test/reopened-delivery.test.ts).
 
-- Autenticação e papéis. Qualquer chamada pode aprovar; `autor` e `criador` são texto livre.
+1. As peças exigidas são dado da campanha: uma linha por peça em `campaign_required_pieces`. A regra recebe a lista como argumento.
+2. Uma peça exigida está pendente enquanto a versão atual dela não estiver aprovada.
+3. A entrega está `approved` quando a marca registrou a aprovação e não há peça pendente. Senão está `in_production`.
+
+O status da entrega é calculado, não gravado. O banco guarda só a data da aprovação. Por isso uma versão nova numa peça exigida derruba a aprovação na hora, e ela volta quando essa versão é aprovada, sem ninguém aprovar a entrega de novo.
+
+## Como cada caso é tratado
+
+| Caso | O que a API faz |
+| --- | --- |
+| Aprovar com peça exigida pendente | Responde 409 com cada peça e o motivo. |
+| Peça que a campanha não exige | Aceita versão, comentário e decisão. Não entra na conta. |
+| Versão nova | Vira a atual da peça, em qualquer status da anterior. Nasce `pending` e sem comentários. |
+| Versão nova em entrega aprovada | A entrega volta a `in_production` até a versão ser aprovada. |
+| Decisão sobre a versão | `pending` vira `approved` ou `changes_requested`. As duas são finais. |
+| Versão substituída | Continua legível com seus comentários. Não recebe decisão nem comentário novo. |
+| Comentário em vídeo | `second` é obrigatório, inteiro, de 0 até `durationSeconds`. |
+| Comentário nas outras peças | Não tem `second`. |
+| Aprovar a entrega de novo | Devolve o estado atual e mantém a data da primeira aprovação. |
+
+## Código
+
+- [src/approval.ts](src/approval.ts): a regra, em funções puras.
+- [src/service.ts](src/service.ts): os casos de uso e os erros.
+- [src/repository.ts](src/repository.ts): todo o SQL.
+- [src/db.ts](src/db.ts): schema e conexão.
+- [src/app.ts](src/app.ts): rotas e validação de formato.
+
+## Índices
+
+Medido em SQLite em memória, com script fora do repositório.
+
+| Índice | Leitura | Escrita | Decisão |
+| --- | --- | --- | --- |
+| `UNIQUE (delivery_id, piece, number)` em `versions` | Atende a versão atual e o histórico por busca no índice. | Já existe pela integridade. | Fica. |
+| `comments (version_id)` | Comentários de uma versão: de 11,4 ms para 43 µs, com 500 mil comentários. | Insert de 1,1 para 1,4 µs. Banco 18% maior. | Trocado pelo de baixo. |
+| `comments (version_id, second)` | 37 µs, sem ordenar na leitura. | Insert de 1,5 µs. Banco 4% maior que com o anterior. | Fica. |
+| `deliveries (campaign_id)` | Nenhuma rota lista entregas por campanha. | Insert de entrega de 0,9 para 1,3 µs. | Não criado. |
+
+## O que ficou de fora
+
+- Autenticação e papéis. Qualquer chamada pode aprovar; `author` e `creator` são texto livre.
 - Upload de arquivo. A versão guarda uma `url`, e a duração do vídeo é a que o cliente declara.
-- Editar as peças exigidas de uma campanha, e editar ou apagar comentários.
+- Paginação do histórico de versões e dos comentários de uma versão.
+- Envio de vários comentários numa chamada.
+- Edição das peças exigidas de uma campanha, e edição ou remoção de comentários.
 - Pagamento. Quem ligar pagamento ao status precisa tratar a queda e a volta da aprovação quando chega versão nova.
-- Migrations: o schema é criado na abertura do banco.
+- Migrations. O schema é criado na abertura do banco; peça ou status novo pede migration nos bancos que já existem.
 
 ## Uso de IA
 
-O código, os testes e este README foram escritos com Claude Code (Claude Opus 5.5).
+O Claude Code (Claude Opus 5.5) escreveu o código, os testes e este README.
 
-O que eu decidi, respondendo a perguntas de desenho antes de qualquer código: status da entrega derivado com aprovação registrada; comentário em qualquer peça, com `segundo` só em vídeo; estado `ajustes_pedidos`, final como a aprovação; peça não exigida aceita e ignorada; lista de exigidas imutável; aprovação idempotente; comentário só na versão atual; duração declarada no vídeo; Fastify, SQLite sem ORM e Vitest.
+Eu tomei as decisões de desenho antes do código: status da entrega calculado a partir da aprovação registrada, comentário em qualquer peça com `second` só em vídeo, o estado `changes_requested` final como a aprovação, peça não exigida aceita e ignorada, lista de exigidas imutável, aprovação idempotente, comentário só na versão atual, duração declarada no vídeo, Fastify, SQLite sem ORM e Vitest.
 
-O que eu revisei: ainda não revisei o código linha a linha.
+Revisei a primeira versão e pedi mudanças: nomes e estrutura iguais aos dos meus outros repositórios, o SQL separado do service num repository, a query da versão atual reescrita com CTE e as listas dos `CHECK` escritas no schema em vez de montadas por interpolação. Pedi o plano de execução de cada query e a medição de cada índice; dessa revisão saiu a troca do índice de comentários. Não revisei o resto do código linha a linha.
