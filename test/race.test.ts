@@ -32,7 +32,10 @@ async function expectConsistent(deliveryId: number): Promise<DeliveryBody> {
   const lastEvent = events.at(-1);
   if (delivery.approvedAt === null) {
     expect(events).toEqual([]);
-  } else if (delivery.status === 'approved') {
+    return delivery;
+  }
+  expect(events[0]?.type).toBe('approved');
+  if (delivery.status === 'approved') {
     expect(['approved', 'approval_restored']).toContain(lastEvent?.type);
   } else {
     expect(lastEvent?.type).toBe('approval_undone');
@@ -105,6 +108,9 @@ describe('aprovar a entrega contra versão nova', () => {
 
       const delivery = await expectConsistent(deliveryId);
       expect(delivery.status).toBe(approval.status === 200 ? 'approved' : 'in_production');
+      if (approval.status === 409) {
+        expect(delivery.approvedAt).toBeNull();
+      }
     }
   });
 });
