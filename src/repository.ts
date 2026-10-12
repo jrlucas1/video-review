@@ -130,6 +130,15 @@ export function listVersions(db: Db, deliveryId: number, piece: Piece): Version[
     .all(deliveryId, piece) as Version[];
 }
 
+export function findCurrentVersion(db: Db, deliveryId: number, piece: Piece): Version | null {
+  const row = db
+    .prepare(
+      `SELECT ${VERSION_COLUMNS} FROM versions WHERE delivery_id = ? AND piece = ? ORDER BY number DESC LIMIT 1`,
+    )
+    .get(deliveryId, piece);
+  return (row as Version | undefined) ?? null;
+}
+
 export function currentVersionNumber(db: Db, deliveryId: number, piece: Piece): number {
   return db
     .prepare('SELECT COALESCE(MAX(number), 0) FROM versions WHERE delivery_id = ? AND piece = ?')

@@ -101,9 +101,8 @@ export function buildApp(db: Db, options: AppOptions = {}): FastifyInstance {
     { schema: { params: idAndPieceParams, body: versionBody } },
     (request, reply) => {
       const { id: deliveryId, piece } = request.params;
-      return reply
-        .code(201)
-        .send(submitVersion(db, Number(deliveryId), piece, request.body, clock()));
+      const { version, created } = submitVersion(db, Number(deliveryId), piece, request.body, clock());
+      return reply.code(created ? 201 : 200).send(version);
     },
   );
 

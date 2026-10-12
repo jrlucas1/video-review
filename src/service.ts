@@ -153,7 +153,7 @@ export function submitVersion(
   piece: Piece,
   input: { url: string; durationSeconds?: number },
   now: Date,
-): Version {
+): { version: Version; created: boolean } {
   requireDelivery(db, deliveryId);
   if (piece === 'video' && input.durationSeconds === undefined) {
     throw new ReviewError(422, 'duration_required', 'Versão de vídeo exige durationSeconds.');
@@ -161,13 +161,22 @@ export function submitVersion(
   if (piece !== 'video' && input.durationSeconds !== undefined) {
     throw new ReviewError(422, 'duration_not_allowed', `durationSeconds não se aplica a ${piece}.`);
   }
-  return repository.insertVersion(db, {
-    deliveryId,
-    piece,
-    url: input.url,
-    durationSeconds: input.durationSeconds ?? null,
-    createdAt: now.toISOString(),
+  const durationSeconds = input.durationSeconds ?? null;
+  const run = db.transaction((): { version: Version; created: boolean } => {
+    const current = repository.findCurrentVersion(db, deliveryId, piece);
+    if (current && current.url === input.url && current.durationSeconds === durationSeconds) {
+      return { version: current, created: false };
+    }
+    const version = repository.insertVersion(db, {
+      deliveryId,
+      piece,
+      url: input.url,
+      durationSeconds,
+      createdAt: now.toISOString(),
+    });
+    return { version, created: true };
   });
+  return run.immediate();
 }
 
 export function listVersions(db: Db, deliveryId: number, piece: Piece): Version[] {

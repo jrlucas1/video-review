@@ -35,11 +35,12 @@ export async function createDelivery(app: FastifyInstance, requiredPieces: Piece
   return delivery.body.id;
 }
 
+let submissions = 0;
+
 export async function submit(app: FastifyInstance, deliveryId: number, piece: Piece): Promise<number> {
-  const payload =
-    piece === 'video'
-      ? { url: 'https://cdn.test/video.mp4', durationSeconds: VIDEO_DURATION_SECONDS }
-      : { url: `https://cdn.test/${piece}` };
+  submissions += 1;
+  const url = `https://cdn.test/${piece}-${submissions}`;
+  const payload = piece === 'video' ? { url, durationSeconds: VIDEO_DURATION_SECONDS } : { url };
   const version = await post(app, `/deliveries/${deliveryId}/pieces/${piece}/versions`, payload);
   if (version.status !== 201) {
     throw new Error(`envio de ${piece} falhou: ${JSON.stringify(version.body)}`);
