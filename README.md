@@ -84,4 +84,4 @@ O Claude Code (Claude Opus 5.5) escreveu o código, os testes e este README.
 
 Eu tomei as decisões de desenho antes do código. As principais: status calculado, `changes_requested` como decisão final, peça não exigida aceita e ignorada, comentário só na versão atual, Fastify e SQLite sem ORM.
 
-Eu revisei a primeira versão e pedi mudanças: a estrutura dos meus outros repositórios, o SQL num repository, os schemas num arquivo próprio, a query da versão atual com CTE, os `CHECK` por extenso e o código sem comentários. Pedi o plano de execução de cada query e a medição de cada índice. Não revisei o resto do código linha a linha.
+Eu revisei a primeira versão e pedi mudanças: a estrutura dos meus outros repositórios, o SQL num repository, os schemas num arquivo próprio, a query da versão atual com CTE, os `CHECK` por extenso e o código sem comentários. Pedi o plano de execução de cada query e a medição de cada índice. Li a regra em `src/approval.ts`. Não revisei o resto do código linha a linha.
