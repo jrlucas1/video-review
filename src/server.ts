@@ -3,7 +3,7 @@ import { openDatabase } from './db.ts';
 
 const db = openDatabase(process.env.DATABASE_PATH ?? 'video-review.db');
 
-const app = buildApp(db);
+const app = buildApp(db, { logger: true });
 const port = Number(process.env.PORT ?? 3000);
 
 app.listen({ port, host: '127.0.0.1' }).then((address) => {

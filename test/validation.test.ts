@@ -66,3 +66,44 @@ describe('entrada inválida', () => {
     }
   });
 });
+
+describe('formato do erro', () => {
+  const json = { 'content-type': 'application/json' };
+
+  it('rota que não existe responde 404 no formato da API', async () => {
+    const unknownPath = await get(ctx.app, '/nada');
+    const unknownMethod = await ctx.app.inject({ method: 'PUT', url: '/campaigns/1' });
+
+    expect(unknownPath.status).toBe(404);
+    expect(unknownPath.body).toEqual({ error: 'not_found', message: 'Rota não existe.' });
+    expect(unknownMethod.json()).toEqual({ error: 'not_found', message: 'Rota não existe.' });
+  });
+
+  it('JSON malformado responde 400 invalid_payload', async () => {
+    const response = await ctx.app.inject({
+      method: 'POST',
+      url: '/campaigns',
+      headers: json,
+      payload: '{oops',
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: 'invalid_payload', message: 'O corpo não é um JSON válido.' });
+  });
+
+  it('corpo vazio com content-type JSON responde 400 invalid_payload', async () => {
+    const response = await ctx.app.inject({ method: 'POST', url: '/campaigns', headers: json });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toBe('invalid_payload');
+  });
+
+  it('falha interna responde 500 sem expor o erro do banco', async () => {
+    ctx.db.close();
+
+    const { status, body } = await get(ctx.app, '/campaigns/1');
+
+    expect(status).toBe(500);
+    expect(body).toEqual({ error: 'internal_error', message: 'Erro interno.' });
+  });
+});

@@ -15,7 +15,7 @@ export interface TestContext {
 
 export function createContext(): TestContext {
   const db = openDatabase();
-  const ctx: TestContext = { app: buildApp(db, () => ctx.now), db, now: new Date(START) };
+  const ctx: TestContext = { app: buildApp(db, { clock: () => ctx.now }), db, now: new Date(START) };
   return ctx;
 }
 
