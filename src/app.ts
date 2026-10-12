@@ -1,137 +1,148 @@
 import Fastify from 'fastify';
-import type { Banco } from './banco';
-import { ErroDaApi } from './erros';
-import { PECAS, type Peca } from './regra';
-import { criarServico } from './servico';
+import type { FastifyInstance } from 'fastify';
+import { PIECES } from './approval.ts';
+import type { Piece } from './approval.ts';
+import type { Db } from './db.ts';
+import {
+  ReviewError,
+  addComment,
+  approveDelivery,
+  createCampaign,
+  createDelivery,
+  decideVersion,
+  getCampaign,
+  getDelivery,
+  getVersion,
+  listVersions,
+  submitVersion,
+} from './service.ts';
 
-const id = { type: 'string', pattern: '^[1-9][0-9]{0,14}$' } as const;
-const texto = { type: 'string', pattern: '\\S', maxLength: 2000 } as const;
+const id = { type: 'string', pattern: '^[1-9][0-9]{0,14}$' };
+const text = { type: 'string', pattern: '\\S', maxLength: 2000 };
 
-const paramsComId = {
+const idParams = {
   type: 'object',
   required: ['id'],
   properties: { id },
-} as const;
+};
 
-const paramsComIdEPeca = {
+const idAndPieceParams = {
   type: 'object',
-  required: ['id', 'peca'],
-  properties: { id, peca: { enum: PECAS } },
-} as const;
+  required: ['id', 'piece'],
+  properties: { id, piece: { enum: PIECES } },
+};
 
-const corpoDaCampanha = {
+const campaignBody = {
   type: 'object',
-  required: ['nome', 'pecasExigidas'],
+  required: ['name', 'requiredPieces'],
   additionalProperties: false,
   properties: {
-    nome: texto,
-    pecasExigidas: { type: 'array', minItems: 1, uniqueItems: true, items: { enum: PECAS } },
+    name: text,
+    requiredPieces: { type: 'array', minItems: 1, uniqueItems: true, items: { enum: PIECES } },
   },
-} as const;
+};
 
-const corpoDaEntrega = {
+const deliveryBody = {
   type: 'object',
-  required: ['criador'],
+  required: ['creator'],
   additionalProperties: false,
-  properties: { criador: texto },
-} as const;
+  properties: { creator: text },
+};
 
-const corpoDaVersao = {
+const versionBody = {
   type: 'object',
   required: ['url'],
   additionalProperties: false,
-  properties: { url: texto, duracaoSegundos: { type: 'integer', minimum: 1 } },
-} as const;
+  properties: { url: text, durationSeconds: { type: 'integer', minimum: 1 } },
+};
 
-const corpoDoComentario = {
+const commentBody = {
   type: 'object',
-  required: ['autor', 'texto'],
+  required: ['author', 'text'],
   additionalProperties: false,
-  properties: { autor: texto, texto, segundo: { type: 'integer', minimum: 0 } },
-} as const;
+  properties: { author: text, text, second: { type: 'integer', minimum: 0 } },
+};
 
-type ComId = { Params: { id: string } };
-type ComIdEPeca = { Params: { id: string; peca: Peca } };
+type WithId = { Params: { id: string } };
+type WithIdAndPiece = { Params: { id: string; piece: Piece } };
 
-export function criarApp(opcoes: { banco: Banco; agora?: () => Date }) {
-  const servico = criarServico(opcoes.banco, opcoes.agora ?? (() => new Date()));
-
-  // Sem coerção: "12" não vira 12 e campo desconhecido é erro, não é descartado.
+export function buildApp(db: Db, clock: () => Date = () => new Date()): FastifyInstance {
+  // Sem coerção: "12" não vira 12, e campo desconhecido é erro em vez de ser descartado.
   const app = Fastify({
     ajv: { customOptions: { coerceTypes: false, removeAdditional: false } },
   });
 
-  app.setErrorHandler((erro: Error & { validation?: unknown }, _requisicao, resposta) => {
-    if (erro instanceof ErroDaApi) {
-      return resposta
-        .status(erro.status)
-        .send({ erro: erro.codigo, mensagem: erro.message, ...erro.detalhes });
+  app.setErrorHandler((error: Error & { validation?: unknown }, _request, reply) => {
+    if (error instanceof ReviewError) {
+      return reply
+        .code(error.status)
+        .send({ error: error.code, message: error.message, ...error.details });
     }
-    if (erro.validation) {
-      return resposta.status(400).send({ erro: 'ENTRADA_INVALIDA', mensagem: erro.message });
+    if (error.validation) {
+      return reply.code(400).send({ error: 'invalid_payload', message: error.message });
     }
-    return resposta.send(erro);
+    return reply.send(error);
   });
 
-  app.post<{ Body: { nome: string; pecasExigidas: Peca[] } }>(
-    '/campanhas',
-    { schema: { body: corpoDaCampanha } },
-    (requisicao, resposta) => resposta.status(201).send(servico.criarCampanha(requisicao.body)),
+  app.post<{ Body: { name: string; requiredPieces: Piece[] } }>(
+    '/campaigns',
+    { schema: { body: campaignBody } },
+    (request, reply) => reply.code(201).send(createCampaign(db, request.body)),
   );
 
-  app.get<ComId>('/campanhas/:id', { schema: { params: paramsComId } }, (requisicao) =>
-    servico.verCampanha(Number(requisicao.params.id)),
+  app.get<WithId>('/campaigns/:id', { schema: { params: idParams } }, (request) =>
+    getCampaign(db, Number(request.params.id)),
   );
 
-  app.post<ComId & { Body: { criador: string } }>(
-    '/campanhas/:id/entregas',
-    { schema: { params: paramsComId, body: corpoDaEntrega } },
-    (requisicao, resposta) =>
-      resposta
-        .status(201)
-        .send(servico.criarEntrega(Number(requisicao.params.id), requisicao.body)),
+  app.post<WithId & { Body: { creator: string } }>(
+    '/campaigns/:id/deliveries',
+    { schema: { params: idParams, body: deliveryBody } },
+    (request, reply) =>
+      reply.code(201).send(createDelivery(db, Number(request.params.id), request.body)),
   );
 
-  app.get<ComId>('/entregas/:id', { schema: { params: paramsComId } }, (requisicao) =>
-    servico.verEntrega(Number(requisicao.params.id)),
+  app.get<WithId>('/deliveries/:id', { schema: { params: idParams } }, (request) =>
+    getDelivery(db, Number(request.params.id)),
   );
 
-  app.post<ComId>('/entregas/:id/aprovacao', { schema: { params: paramsComId } }, (requisicao) =>
-    servico.aprovarEntrega(Number(requisicao.params.id)),
+  app.post<WithId>('/deliveries/:id/approve', { schema: { params: idParams } }, (request) =>
+    approveDelivery(db, Number(request.params.id), clock()),
   );
 
-  app.post<ComIdEPeca & { Body: { url: string; duracaoSegundos?: number } }>(
-    '/entregas/:id/pecas/:peca/versoes',
-    { schema: { params: paramsComIdEPeca, body: corpoDaVersao } },
-    (requisicao, resposta) => {
-      const { id, peca } = requisicao.params;
-      return resposta.status(201).send(servico.enviarVersao(Number(id), peca, requisicao.body));
+  app.post<WithIdAndPiece & { Body: { url: string; durationSeconds?: number } }>(
+    '/deliveries/:id/pieces/:piece/versions',
+    { schema: { params: idAndPieceParams, body: versionBody } },
+    (request, reply) => {
+      const { id: deliveryId, piece } = request.params;
+      return reply
+        .code(201)
+        .send(submitVersion(db, Number(deliveryId), piece, request.body, clock()));
     },
   );
 
-  app.get<ComIdEPeca>(
-    '/entregas/:id/pecas/:peca/versoes',
-    { schema: { params: paramsComIdEPeca } },
-    (requisicao) => servico.listarVersoes(Number(requisicao.params.id), requisicao.params.peca),
+  app.get<WithIdAndPiece>(
+    '/deliveries/:id/pieces/:piece/versions',
+    { schema: { params: idAndPieceParams } },
+    (request) => listVersions(db, Number(request.params.id), request.params.piece),
   );
 
-  app.get<ComId>('/versoes/:id', { schema: { params: paramsComId } }, (requisicao) =>
-    servico.verVersao(Number(requisicao.params.id)),
+  app.get<WithId>('/versions/:id', { schema: { params: idParams } }, (request) =>
+    getVersion(db, Number(request.params.id)),
   );
 
-  app.post<ComId>('/versoes/:id/aprovacao', { schema: { params: paramsComId } }, (requisicao) =>
-    servico.decidirVersao(Number(requisicao.params.id), 'aprovada'),
+  app.post<WithId>('/versions/:id/approve', { schema: { params: idParams } }, (request) =>
+    decideVersion(db, Number(request.params.id), 'approved'),
   );
 
-  app.post<ComId>('/versoes/:id/ajustes', { schema: { params: paramsComId } }, (requisicao) =>
-    servico.decidirVersao(Number(requisicao.params.id), 'ajustes_pedidos'),
+  app.post<WithId>('/versions/:id/request-changes', { schema: { params: idParams } }, (request) =>
+    decideVersion(db, Number(request.params.id), 'changes_requested'),
   );
 
-  app.post<ComId & { Body: { autor: string; texto: string; segundo?: number } }>(
-    '/versoes/:id/comentarios',
-    { schema: { params: paramsComId, body: corpoDoComentario } },
-    (requisicao, resposta) =>
-      resposta.status(201).send(servico.comentar(Number(requisicao.params.id), requisicao.body)),
+  app.post<WithId & { Body: { author: string; text: string; second?: number } }>(
+    '/versions/:id/comments',
+    { schema: { params: idParams, body: commentBody } },
+    (request, reply) =>
+      reply.code(201).send(addComment(db, Number(request.params.id), request.body, clock())),
   );
 
   return app;

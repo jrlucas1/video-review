@@ -1,12 +1,11 @@
-import { criarApp } from './app';
-import { abrirBanco } from './banco';
+import { buildApp } from './app.ts';
+import { openDatabase } from './db.ts';
 
-const app = criarApp({ banco: abrirBanco(process.env.BANCO ?? 'video-review.db') });
+const db = openDatabase(process.env.DATABASE_PATH ?? 'video-review.db');
 
-app
-  .listen({ port: Number(process.env.PORT ?? 3000), host: process.env.HOST ?? '127.0.0.1' })
-  .then((endereco) => console.log(`API em ${endereco}`))
-  .catch((erro) => {
-    console.error(erro);
-    process.exit(1);
-  });
+const app = buildApp(db);
+const port = Number(process.env.PORT ?? 3000);
+
+app.listen({ port, host: '127.0.0.1' }).then((address) => {
+  console.log(`ouvindo em ${address}`);
+});
